@@ -1,67 +1,96 @@
 # Ranking de heladerías de València — PWA
 
 App web instalable para catar, puntuar y ordenar heladerías de Valencia.
-Hecha con React + Vite. Los datos se guardan en el navegador (`localStorage`),
-así que funciona sin cuenta ni servidor y sigue offline tras la primera visita.
+React + Vite + Leaflet. Todos los datos viven en el navegador
+(`localStorage` para puntuaciones y `IndexedDB` para fotos), así que funciona
+sin cuenta ni servidor y mantiene modo offline tras la primera visita.
+
+**En producción:** https://r-tortosa.github.io/ice-cream-rank/
+
+## Qué hace
+
+- **Catas**: cada heladería se puntúa con 5 sliders (sabor, textura, variedad,
+  precio, ambiente). La media manda en el ranking general.
+- **Sabores con ranking paralelo**: dentro de cada heladería puedes añadir
+  los sabores que pruebes, cada uno con sus sliders de sabor y textura.
+  Una vista dedicada los ordena globalmente.
+- **Vista mapa**: marcadores tipo "scoop" por barrio sobre OpenStreetMap.
+  Toca un pin para puntuar, arrástralo para corregir su ubicación.
+- **Añadir desde el mapa**: pulsa "Añadir aquí" y toca el punto del local.
+  El barrio se autodetecta usando el GeoJSON oficial del Ajuntament de
+  València (88 barrios, point-in-polygon en cliente, sin red).
+- **Fotos**: una principal por heladería + una por sabor. Se redimensionan
+  a 1280 px y se recodifican como JPEG q=0.8 en cliente (esto borra el EXIF
+  y el GPS de origen). Guardadas en IndexedDB.
+- **Export/Import CSV**: backup en dos CSV (`heladerias-YYYY-MM-DD.csv` y
+  `sabores-…`). Las fotos no caben en CSV, por diseño.
+- **PWA real**: instalable, con service worker generado por Workbox
+  (precache + runtime caching para tiles de OSM y para imágenes).
 
 ## Probarla en local
 
 ```bash
 npm install
-npm run dev       # abre http://localhost:5173
+npm run dev       # http://localhost:5173
 ```
 
-## Construir para producción
+Para probar el service worker (modo offline real), hace falta build + preview:
 
 ```bash
-npm run build     # genera la carpeta dist/
-npm run preview   # sirve dist/ en local para comprobar la PWA
+npm run build
+npm run preview   # http://localhost:4173
 ```
 
-Importante: una PWA solo se instala servida por **HTTPS** (o `localhost`).
-`npm run dev` ya vale para probar la instalación en local.
+## Despliegue
 
-## Desplegar e instalar en el móvil
+GitHub Pages con GitHub Actions (`.github/workflows/deploy.yml`).
+Cada push a `main` redespliega solo. La URL queda en
+`https://<usuario>.github.io/<repo>/`.
 
-1. Sube la carpeta `dist/` a cualquier hosting estático con HTTPS
-   (Netlify, Vercel, GitHub Pages, Cloudflare Pages…).
-2. Abre la URL en el móvil → menú del navegador → **"Añadir a pantalla de inicio"**.
-3. Quedará como una app independiente, con su icono y modo offline.
-
-Si despliegas en un subdirectorio (p. ej. `usuario.github.io/heladerias/`),
-cambia `base` en `vite.config.js` a `"/heladerias/"` y `start_url`/`scope`
-en `public/manifest.webmanifest` a `"/heladerias/"`.
+Si forkeas o cambias el nombre del repo, edita la constante `BASE` en
+`vite.config.js`.
 
 ## Estructura
 
 ```
-index.html                  punto de entrada
-src/App.jsx                 toda la app (UI + lógica + datos sembrados)
-src/main.jsx                arranque de React
-public/manifest.webmanifest metadatos de la PWA (nombre, iconos, colores)
-public/sw.js                service worker (offline, stale-while-revalidate)
-public/icon-192.png         iconos de la app
+index.html                        punto de entrada
+src/main.jsx                      arranque React + registro SW + CSS Leaflet
+src/App.jsx                       UI, estado, persistencia
+src/barrios.js                    detección barrio+distrito (point-in-polygon)
+src/barrios.geo.json              GeoJSON de los 88 barrios (CC-BY Ajuntament)
+src/photos.js                     compresión + IndexedDB para fotos
+src/csv.js                        export/import CSV
+public/icon-192.png               iconos PWA
 public/icon-512.png
-vite.config.js              configuración de Vite
+scripts/process-barrios.mjs       regenera src/barrios.geo.json desde la fuente
+vite.config.js                    Vite + vite-plugin-pwa (Workbox)
+.github/workflows/deploy.yml      build + deploy a GitHub Pages
 ```
 
-## Notas para llevarlo más lejos
+## Limitaciones honestas
 
-- El service worker actual es mínimo. Para offline a prueba de balas con
-  versiones controladas, conviene cambiar a `vite-plugin-pwa` (Workbox).
-- Los datos viven en este dispositivo. Si quieres sincronizar entre móviles
-  haría falta un backend o un servicio tipo Supabase/Firebase.
-- Para empaquetarlo como `.apk` real, se puede envolver con Capacitor o
-  PWABuilder partiendo de este mismo proyecto.
+- Los datos están **por dispositivo y navegador**. No hay sincronización
+  entre móviles. Si limpias datos del navegador o cambias de móvil,
+  empiezas de cero (a menos que hayas exportado el CSV).
+- Las fotos viven en IndexedDB y **no se incluyen en el CSV**. Para un
+  backup completo con fotos haría falta backend (Supabase/Firebase) o
+  un ZIP con JSON+blobs.
+- Las coords del SEED son aproximadas por barrio. La primera vez que
+  pases por una heladería, arrastra el pin para fijar la ubicación real.
+- En iOS Safari instalado, si la PWA queda inactiva semanas, el sistema
+  puede vaciar su almacenamiento. Sin backend no hay garantía 100 %.
 
----
+## Stack
 
-## Prompt para pegar en Claude Code
+- React 18, Vite 5
+- Leaflet 1.9 + react-leaflet 4
+- vite-plugin-pwa + Workbox (SW autoUpdate, precache, runtime cache de tiles)
+- idb-keyval para IndexedDB
 
-> Tengo un proyecto React + Vite que ya es una PWA funcional (un tracker para
-> puntuar heladerías de Valencia; los datos se guardan en localStorage).
-> Compila con `npm install && npm run build`. Quiero que me ayudes a:
-> 1) revisarlo y confirmar que la instalación PWA funciona (manifest + sw.js);
-> 2) migrar el service worker a `vite-plugin-pwa` (Workbox) para offline robusto;
-> 3) prepararlo para desplegar en [Netlify / Vercel / GitHub Pages] y darme los pasos.
-> Empieza leyendo `src/App.jsx`, `public/manifest.webmanifest` y `vite.config.js`.
+## Atribución
+
+- Tiles del mapa © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+- Polígonos de barrios: [Ajuntament de València](https://opendata.vlci.valencia.es/dataset/barris-barrios),
+  licencia [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.es).
+  Procesados con `scripts/process-barrios.mjs` (recorte de propiedades y
+  redondeo de coords a 5 decimales).
